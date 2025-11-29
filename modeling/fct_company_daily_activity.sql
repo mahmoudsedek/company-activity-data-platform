@@ -1,4 +1,4 @@
-/* Target: fact_company_daily_activity
+/* Target: fct_company_daily_activity
    Logic: Left Join CRM (Anchor) to Usage. Calculate rolling metrics.
    Grain: One row per company_id per date
 */
@@ -50,7 +50,7 @@ EnrichedData AS (
 )
 SELECT
     *,
-
+    -- Could be moved later to a separate model if needed (based on the performance)
     AVG(active_users_count) OVER (
         PARTITION BY company_id 
         ORDER BY activity_date 

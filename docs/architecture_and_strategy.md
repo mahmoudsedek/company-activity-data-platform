@@ -1,6 +1,6 @@
-# Pipeline Architecture & Implementation Strategy
+Pipeline Architecture & Implementation Strategy
 
-## 1. Azure Data Factory (ADF) Flow (Question 3)
+1. Azure Data Factory (ADF) Flow (Question 3)
 
 Conceptual Sketch
 
@@ -22,27 +22,27 @@ graph TD
     F -. "Fail" .-> H
 
 
-# Component Details
+Component Details
 
-## 1. Trigger: TRG_Daily_0100
+1. Trigger: TRG_Daily_0100
 
 Schedule: Daily at 1:00 AM UTC.
 
 Parameters: windowStart passed to pipeline to ensure we fetch the correct data date.
 
-## 2. API Ingestion (Python Wrapper): ACT_FUNC_IngestProductUsage
+2. API Ingestion (Containerized Python): ACT_FUNC_IngestProductUsage
 
-Type: Azure Function Activity (or Databricks Notebook Activity).
+Type: Azure Container Instance (ACI) Activity (or Azure Kubernetes Service - AKS).
 
-Why: The API requires pagination and logic too complex for a simple ADF Web Activity.
+Rationale: The logic is now deployed inside a portable Docker container (built from files in docker/) for guaranteed environment consistency and easier scaling. ADF will trigger the container runtime (e.g., ACI) using the image pushed to Azure Container Registry (ACR).
 
-Target: Azure Function running the fetch_product_usage.py script.
+Target: Executes the Python script, fetch_product_usage.py, inside the container.
 
-Security Standard: All sensitive parameters (API Key, Connection Strings) are retrieved from Azure Key Vault by the ADF pipeline and passed securely as parameters to this activity.
+Security Standard: All sensitive parameters (API Key, Connection Strings) are retrieved from Azure Key Vault by the ADF pipeline and passed securely as environment variables or parameters to the container runtime.
 
 Output: Raw JSON files in adls/raw/usage/{yyyy}/{mm}/{dd}/.
 
-## 3. CRM Ingestion: ACT_COPY_CRMSnapshot
+3. CRM Ingestion: ACT_COPY_CRMSnapshot
 
 Type: Copy Data Activity.
 
@@ -52,15 +52,15 @@ Sink: Azure SQL Database (Staging Table: stg_crm_snapshot).
 
 Optimization: Truncate table before load (full snapshot).
 
-## 4. Transformation: ACT_SQL_MergeDailyFacts
+4. Transformation: ACT_SQL_MergeDailyFacts
 
-Type: Stored Procedure or Script Activity.
+Type: Script Activity.
 
-Logic: Executes the SQL found in modeling/transform_fact_activity.sql.
+Logic: Executes the SQL found in modeling/fct_company_daily_activity.sql.
 
 Dependencies: Only runs if both previous activities succeeded.
 
-## 5. Alerting: ACT_WEB_SendAlert
+5. Alerting: ACT_WEB_SendAlert
 
 Type: Web Activity.
 
@@ -79,8 +79,7 @@ Payload:
 }
 
 
-
-# 2. Triage Strategy: The "30-Minute Rule" (Challenge Question 5)
+2. Triage Strategy: The "30-Minute Rule" (Challenge Question 5)
 
 Scenario: You have 30 minutes before the deadline. You cannot finish everything.
 
@@ -88,8 +87,10 @@ The Decision
 Implement First: The Extraction Layer (Ingestion)
 Specifics: The Python API script (ingestion/fetch_product_usage.py) and the CRM Copy Activity.
 Why: 1. Data Volatility: API data often changes or becomes harder to access over time (rate limits, window restrictions). If we miss the "T-0" ingestion window, that data might be lost forever.
-1. Decoupling: Storage is cheap. We can land the raw data now (preservation) and figure out the complex SQL transformation logic later. We can replay transformations; we cannot replay a missed real-time event capture easily.
+
+Decoupling: Storage is cheap. We can land the raw data now (preservation) and figure out the complex SQL transformation logic later. We can replay transformations; we cannot replay a missed real-time event capture easily.
 Explicitly Postponed: Complex Transformations & Rolling Metrics
 Specifics: The 7-day rolling average SQL window functions and the "Churn Risk" derived logic.
 Why: 1. History Dependency: Rolling averages need 7 days of history to be accurate. On Day 1, this metric is mathematically impossible or misleading (cold start).
-2. Complexity: Debugging SQL window functions takes time. It is safer to ship a "Daily Active Users" (Raw Count) report that is 100% accurate than a "Churn Risk" report that is broken because of missing history.
+
+Complexity: Debugging SQL window functions takes time. It is safer to ship a "Daily Active Users" (Raw Count) report that is 100% accurate than a "Churn Risk" report that is broken because of missing history.

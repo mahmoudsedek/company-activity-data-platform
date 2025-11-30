@@ -4,16 +4,18 @@ A scalable Azure-based data platform designed to ingest CRM and product usage da
 
 ## Repository layout
 
+- docker/             — Dockerfile and dependencies for containerized components
+- docs/               — Architecture diagrams & documentation
 - ingestion/          — Python API extraction scripts & ADF logic  
 - modeling/           — SQL logic for Fact/Dimension creation  
 - performance/        — Optimization strategies (Planned)  
 - quality_checks/     — Data quality validation rules (Planned)  
-- docs/               — Architecture diagrams & documentation
 
 ## Quickstart
 
 Prerequisites:
 - Python 3.8+ (for local scripts)
+- Docker installed (for containerization)
 - An Azure subscription (for cloud deployment)
 - Access to the target Snowflake/warehouse
 
@@ -23,6 +25,16 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1   # use Activate.bat for cmd
 pip install -r ingestion/requirements.txt
 ```
+
+## Building the Docker Image
+To containerize the ingestion process, run the following from the repository root:
+
+# Build the image using the Dockerfile in the docker/ directory
+docker build -t company-activity-ingest:latest -f docker/Dockerfile .
+
+# Push the image to Azure Container Registry (ACR) for deployment
+docker push youracr.azurecr.io/company-activity-ingest:latest
+
 
 ## How to use
 

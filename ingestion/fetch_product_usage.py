@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import logging
 from azure.storage.blob import BlobServiceClient
 
-def fetch_product_usage(start_date, end_date, api_key, output_container):
+def fetch_product_usage(start_date, end_date, api_key, output_container, blob_connection_string):
     """
     Fetches usage data and lands it in Blob Storage.
     Handles pagination, rate limiting, and idempotency.
@@ -12,15 +12,16 @@ def fetch_product_usage(start_date, end_date, api_key, output_container):
     Args:
         start_date (datetime): Start of window
         end_date (datetime): End of window
-        api_key (str): Auth token
-        output_container (str): Target Blob container
+        api_key (str): Auth token, injected from Key Vault via ADF.
+        output_container (str): Target Blob container.
+        blob_connection_string (str): Connection string, injected from Key Vault via ADF.
     """
     base_url = "https://api.product-usage.com/v1/stats" #FAKE URL
     current_cursor = start_date
     
-    # Initialize Blob Client (Connection string usually from KeyVault or Env Var)
-    # In production, use DefaultAzureCredential() instead of connection strings
-    blob_service = BlobServiceClient.from_connection_string("YOUR_CONNECTION_STRING")
+    # SECURITY STANDARD: Initialize Blob Client using the string injected by the orchestrator.
+    # In production, DefaultAzureCredential() is preferred for service-to-service auth.
+    blob_service = BlobServiceClient.from_connection_string(blob_connection_string)
     
     while current_cursor <= end_date:
         str_date = current_cursor.strftime('%Y-%m-%d')
@@ -33,6 +34,7 @@ def fetch_product_usage(start_date, end_date, api_key, output_container):
             has_more = True
             
             while has_more:
+                # API Key is passed via header (also injected from ADF/Key Vault)
                 response = requests.get(
                     base_url, 
                     params={'date': str_date, 'page': page},
@@ -52,7 +54,6 @@ def fetch_product_usage(start_date, end_date, api_key, output_container):
                     has_more = False
             
             # 2. Land Data (Idempotent naming)
-            # We overwrite if the file exists to ensure re-runs correct data issues
             if all_records:
                 file_name = f"usage_data_{str_date}.json"
                 blob_client = blob_service.get_blob_client(
@@ -77,4 +78,5 @@ def fetch_product_usage(start_date, end_date, api_key, output_container):
 
 # Example Execution for testing
 if __name__ == "__main__":
-    fetch_product_usage(datetime(2023,10,25), datetime(2023,10,25), "ABI_SECRETs", "landing-data")
+    # Note: In a real run, these secrets would be passed from ADF/Key Vault.
+    fetch_product_usage(datetime(2023,10,25), datetime(2023,10,25), "ABI_SECRETs", "landing-data", "YOUR_CONNECTION_STRING_HERE")
